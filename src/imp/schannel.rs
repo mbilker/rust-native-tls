@@ -1,6 +1,7 @@
 extern crate schannel;
 
-use self::schannel::cert_context::{CertContext, HashAlgorithm, KeySpec};
+use self::schannel::cert_context::{HashAlgorithm, KeySpec};
+pub use self::schannel::cert_context::CertContext;
 use self::schannel::cert_store::{CertAdd, CertStore, Memory, PfxImportOptions};
 use self::schannel::crypt_prov::{AcquireOptions, ProviderType};
 use self::schannel::schannel_cred::{Direction, Protocol, SchannelCred};
@@ -30,6 +31,15 @@ fn convert_protocols(min: Option<::Protocol>, max: Option<::Protocol>) -> &'stat
         protocols = p;
     }
     protocols
+}
+
+fn has_private_key(cert: &CertContext) -> bool {
+    cert
+        .private_key()
+        .silent(true)
+        .compare_key(true)
+        .acquire()
+        .is_ok()
 }
 
 pub struct Error(io::Error);
@@ -64,18 +74,23 @@ pub struct Identity {
 }
 
 impl Identity {
+    pub fn from_cert_context(cert: CertContext) -> Result<Identity, Error> {
+        if has_private_key(&cert) {
+            Ok(Identity { cert })
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "No private key found in certificate context",
+            ).into())
+        }
+    }
+
     pub fn from_pkcs12(buf: &[u8], pass: &str) -> Result<Identity, Error> {
         let store = PfxImportOptions::new().password(pass).import(buf)?;
         let mut identity = None;
 
         for cert in store.certs() {
-            if cert
-                .private_key()
-                .silent(true)
-                .compare_key(true)
-                .acquire()
-                .is_ok()
-            {
+            if has_private_key(&cert) {
                 identity = Some(cert);
                 break;
             }

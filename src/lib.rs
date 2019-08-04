@@ -162,6 +162,13 @@ impl From<imp::Error> for Error {
 pub struct Identity(imp::Identity);
 
 impl Identity {
+    /// TODO
+    #[cfg(target_os = "windows")]
+    pub fn from_cert_context(cert: imp::CertContext) -> Result<Identity> {
+        let identity = imp::Identity::from_cert_context(cert)?;
+        Ok(Identity(identity))
+    }
+
     /// Parses a DER-formatted PKCS #12 archive, using the specified password to decrypt the key.
     ///
     /// The archive should contain a leaf certificate and its private key, as well any intermediate
