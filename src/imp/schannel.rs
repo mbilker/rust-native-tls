@@ -1,6 +1,6 @@
 extern crate schannel;
 
-use self::schannel::cert_context::{CertContext, HashAlgorithm};
+use self::schannel::cert_context::HashAlgorithm;
 use self::schannel::cert_store::{CertAdd, CertStore, Memory, PfxImportOptions};
 use self::schannel::schannel_cred::{Direction, Protocol, SchannelCred};
 use self::schannel::tls_stream;
@@ -10,6 +10,8 @@ use std::io;
 use std::str;
 
 use {TlsAcceptorBuilder, TlsConnectorBuilder};
+
+pub use self::schannel::cert_context::CertContext;
 
 const SEC_E_NO_CREDENTIALS: u32 = 0x8009030E;
 
@@ -63,18 +65,32 @@ pub struct Identity {
 }
 
 impl Identity {
+    fn has_private_key(cert: &CertContext) -> bool {
+        cert
+          .private_key()
+          .silent(true)
+          .compare_key(true)
+          .acquire()
+          .is_ok()
+    }
+
+    pub fn from_cert_context(cert: CertContext) -> Result<Identity, Error> {
+        if Self::has_private_key(&cert) {
+            Ok(Identity { cert })
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "No private key found in certificate context",
+            ).into())
+        }
+    }
+
     pub fn from_pkcs12(buf: &[u8], pass: &str) -> Result<Identity, Error> {
         let store = PfxImportOptions::new().password(pass).import(buf)?;
         let mut identity = None;
 
         for cert in store.certs() {
-            if cert
-                .private_key()
-                .silent(true)
-                .compare_key(true)
-                .acquire()
-                .is_ok()
-            {
+            if Self::has_private_key(&cert) {
                 identity = Some(cert);
                 break;
             }
